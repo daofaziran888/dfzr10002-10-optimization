@@ -1,8 +1,13 @@
-"""数据看板业务规则：状态流转、字段校验与筛选口径都收在这里。"""
+"""数据看板业务规则：状态流转、字段校验与筛选口径都收在这里。
+
+看板用于对照分析数据集快照：清单里的「数据集快照」汇总看板图表绑定的
+数据集当前有效代次（代次、行数上限、最近刷新），随刷新代次推进实时一致。
+"""
 from __future__ import annotations
 
 from typing import Any
 
+from app.services.refresh import refresh_engine
 from app.store import store
 
 MODULE = "dashboard"
@@ -10,6 +15,37 @@ REQUIRED_FIELDS = ["面板编号", "面板名称", "布局配置"]
 STATUS_ORDER = ["草稿", "待校验", "已启用", "已停用"]
 ACTION_RULES = {"提交校验": "待校验", "启用配置": "已启用", "停用配置": "已停用"}
 NEGATIVE_ACTIONS = ["停用配置"]
+
+
+def dataset_snapshot_summary(row: dict[str, Any]) -> str:
+    """把看板图表集合绑定的数据集有效代次拼成一段对照摘要。"""
+    codes = [
+        code.strip()
+        for code in str(row.get("图表集合") or "").replace("，", "、").split("、")
+        if code.strip()
+    ]
+    dataset_codes: list[str] = []
+    for code in codes:
+        for chart in store.rows("chart"):
+            if str(chart.get("图表编号") or "") == code:
+                dataset_codes.append(str(chart.get("数据源绑定") or ""))
+    parts: list[str] = []
+    for dataset_code in dict.fromkeys(dataset_codes):
+        snapshot = refresh_engine.snapshot_by_code(dataset_code)
+        if snapshot and snapshot["当前代次"] is not None:
+            parts.append(
+                f"{dataset_code} 第{snapshot['当前代次']}代"
+                f" · 上限{snapshot['行数上限']}"
+                f" · {snapshot['最近刷新']}"
+            )
+    return "；".join(parts) if parts else "—"
+
+
+def with_dataset_snapshot(row: dict[str, Any]) -> dict[str, Any]:
+    """返回带了数据集快照摘要的行副本，不改写 store 里的原始行。"""
+    entry = dict(row)
+    entry["数据集快照"] = dataset_snapshot_summary(row)
+    return entry
 
 
 class DashboardService:
@@ -28,10 +64,11 @@ class DashboardService:
             rows = [row for row in rows if row.get("status") == status]
         total = len(rows)
         start = max(page - 1, 0) * size
-        return rows[start:start + size], total
+        return [with_dataset_snapshot(row) for row in rows[start:start + size]], total
 
     def get_entry(self, entry_id: int) -> dict[str, Any] | None:
-        return store.find(MODULE, entry_id)
+        row = store.find(MODULE, entry_id)
+        return with_dataset_snapshot(row) if row is not None else None
 
     def create_entry(self, values: dict[str, Any]) -> tuple[dict[str, Any] | None, list[str]]:
         missing = [field for field in REQUIRED_FIELDS if not str(values.get(field) or "").strip()]

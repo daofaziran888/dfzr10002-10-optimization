@@ -33,3 +33,14 @@ body { margin: 0; background: #f6f8fb; color: #1f2937; }
 .link { border: none; background: none; color: var(--brand); cursor: pointer; padding: 0; }
 .page-foot { display: flex; justify-content: space-between; margin-top: 8px; font-size: 12px; color: var(--muted); }
 .error-text { color: #b42318; }
+.notice-text { color: #067647; }
+.compare-panel { margin-top: 16px; background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; }
+.compare-head { display: flex; justify-content: space-between; align-items: center; }
+.compare-head h3 { margin: 0; font-size: 15px; }
+.compare-subtitle { font-size: 13px; color: var(--muted); margin: 12px 0 6px; }
+.compare-picker { display: flex; align-items: center; gap: 8px; margin: 12px 0; font-size: 13px; }
+.compare-picker select { padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; }
+.compare-table th, .compare-table td { vertical-align: top; }
+.generation-abnormal td { background: #fef6f5; }
+.diff-added { color: #067647; margin-right: 8px; }
+.diff-removed { color: #b42318; }

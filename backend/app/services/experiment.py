@@ -1,8 +1,13 @@
-"""分析实验管理业务规则：状态流转、字段校验与筛选口径都收在这里。"""
+"""分析实验管理业务规则：状态流转、字段校验与筛选口径都收在这里。
+
+实验读取口径同步：清单里的「数据代次、行数上限(当前代次)」实时取自关联
+分析数据集的当前有效代次，刷新失败时实验仍看到上一成功代次的行数上限。
+"""
 from __future__ import annotations
 
 from typing import Any
 
+from app.services.refresh import refresh_engine
 from app.store import store
 
 MODULE = "experiment"
@@ -10,6 +15,19 @@ REQUIRED_FIELDS = ["实验编号", "实验名称", "分析数据集"]
 STATUS_ORDER = ["草稿", "运行中", "已完成", "已关闭"]
 ACTION_RULES = {"启动实验": "草稿", "结束实验": "运行中", "关闭实验": "已完成"}
 NEGATIVE_ACTIONS = []
+
+
+def with_dataset_snapshot(row: dict[str, Any]) -> dict[str, Any]:
+    """返回带了关联数据集有效代次信息的行副本，不改写 store 里的原始行。"""
+    entry = dict(row)
+    snapshot = refresh_engine.snapshot_by_code(str(row.get("分析数据集") or ""))
+    if snapshot and snapshot["当前代次"] is not None:
+        entry["数据代次"] = f"第{snapshot['当前代次']}代"
+        entry["行数上限(当前代次)"] = snapshot["行数上限"]
+    else:
+        entry["数据代次"] = "—"
+        entry["行数上限(当前代次)"] = "—"
+    return entry
 
 
 class ExperimentService:
@@ -28,10 +46,11 @@ class ExperimentService:
             rows = [row for row in rows if row.get("status") == status]
         total = len(rows)
         start = max(page - 1, 0) * size
-        return rows[start:start + size], total
+        return [with_dataset_snapshot(row) for row in rows[start:start + size]], total
 
     def get_entry(self, entry_id: int) -> dict[str, Any] | None:
-        return store.find(MODULE, entry_id)
+        row = store.find(MODULE, entry_id)
+        return with_dataset_snapshot(row) if row is not None else None
 
     def create_entry(self, values: dict[str, Any]) -> tuple[dict[str, Any] | None, list[str]]:
         missing = [field for field in REQUIRED_FIELDS if not str(values.get(field) or "").strip()]
